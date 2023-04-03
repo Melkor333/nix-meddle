@@ -1,13 +1,16 @@
 #!/usr/bin/env osh
 
-MEDDLE_PATH=/nix/var/meddle
+MEDDLE_PATH="${HOME}/.local/share/meddle"
 NIX_STORE_PATH=/nix/store
-# Set an initial time incase someone abuses it :P
-DATE=$(date --iso-8601=seconds)
 
 # COMAND DEFINITIONS
 # ------------------
 COPY_COMMAND="rsync --mkpath -aAX"
+
+_date() {
+    date +%s
+}
+DATE=$(_date)
 
 _err() {
     echo "$@" 1>&2
@@ -23,7 +26,7 @@ _run() {
     if [[ -z "$NO_MEDDLE" ]]; then
         "$@"
     else
-        echo "running" "$@"
+        echo not running "$@"
     fi
 }
 
@@ -37,32 +40,11 @@ _filter() {
     gum filter
 }
 
-# Make sure we use sudo if we're not root
-_check_sudo() {
-    if [ "$EUID" -ne 0 ]
-    then
-        _err "Prepending 'sudo' before every command"
-        # TODO: Test sudo/doas/etc.
-        SUDO="sudo"
-    else
-        # No sudo required
-        SUDO=""
-    fi
-}
-
-# Run command with sudo and other stuff if necessary
-_sudo() {
-    if [[ -z "$SUDO" ]]; then
-        _check_sudo
-    fi
-    _run "$SUDO" "$@"
-}
-
 find_meddle_paths() {
 # Check if (and how many) paths already exist for a partial directory name
     local count=0
     # TODO: ignore files, only take folders
-    for file in $(ls "${NIX_MEDDLE_PATH}/" | grep "$@"); do
+    for file in $(ls "${MEDDLE_PATH}/" | grep "$@"); do
         echo "$file"
         count=$((count+1))
     done
@@ -70,12 +52,12 @@ find_meddle_paths() {
 }
 
 copy_path() {
-    _sudo "$COPY_COMMAND" "${1}/" "$1"
+    _run $COPY_COMMAND "${1}/" "$2"
 }
 
 # Make a whole directory writable
 make_writable() {
-    _sudo chmod -R u+w "$1"
+    _run chmod -R u+w "$1"
 }
 
 # Check if a mountpoint already exist
@@ -110,7 +92,7 @@ mount_path() {
 
 meddle() {
     # Used for creating a new copy
-    DATE=$(date --iso-8601=seconds)
+    DATE=$(_date)
     directory=$(get_all_nix_dirs)
     if [[ -z "$directory" ]]; then
        _err "no directory chosen. exiting"
@@ -125,14 +107,14 @@ meddle() {
             directory="$dirs"
         fi
         meddle_path="${MEDDLE_PATH}/${directory}"
-        nix_path="${NIX_STORE_PATH}${directory#*_}" # Cut away DATE_ from directory
+        nix_path="${NIX_STORE_PATH}/${directory#*_}" # Cut away DATE_ from directory
     else
         if ! _ask "Directory doesn't exist yet, create?"; then
             return 1
         fi
         echo "creating dir!"
         meddle_path="$(get_meddle_path ${directory})"
-        nix_path="${NIX_STORE_PATH}${directory}"
+        nix_path="${NIX_STORE_PATH}/${directory}"
         copy_path "$nix_path" "$meddle_path"
         make_writable "$meddle_path"
     fi
