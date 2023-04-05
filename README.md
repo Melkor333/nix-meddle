@@ -31,9 +31,9 @@ nix run github:Melkor333/nix-meddle
 
 ## Nix without flakes
 
-TODO. See the manual install.
+TODO.
 
-(PS: I hated people like me only providing a flake. until I learned flakes.. :) )
+(PS: I hated people like me only providing a flake. until I learned flakes.. : )
 
 # Usage
 
