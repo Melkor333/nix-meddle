@@ -4,8 +4,6 @@ Meddle around in your `/nix/store/` without actually destroying anything!
 
 Warning: Really early stage. Except breakages!
 
-[TOC]
-
 # What is this??
 
 Quasi savely meddle around in your nix store.
