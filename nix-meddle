@@ -6,6 +6,7 @@ NIX_STORE_PATH=/nix/store
 # COMAND DEFINITIONS
 # ------------------
 COPY_COMMAND="rsync --mkpath -aAX"
+MOUNT_COMMAND="mount"
 
 _date() {
     date +%s
@@ -19,6 +20,17 @@ _err() {
 _ask() {
     gum confirm "$@"
     return $?
+}
+
+# Thanks https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced
+# Helper function
+_is_sourced() {
+    if [ -n "$ZSH_VERSION" ]; then
+        case $ZSH_EVAL_CONTEXT in *:file:*) return 0;; esac
+    else  # Add additional POSIX-compatible shell names here, if needed.
+        case ${0##*/} in dash|-dash|bash|-bash|ksh|-ksh|sh|-sh) return 0;; esac
+    fi
+    return 1  # NOT sourced.
 }
 
 # If NO_MEDDLE is set, only echo commands
@@ -77,26 +89,34 @@ get_all_nix_dirs() {
     find /nix/store/ -maxdepth 1 -type d | awk -F'/' '{print $NF }' | _filter
 }
 
-# TODO: Detect if we're already unshared
-unshare_mount() {
-    if [[ "$(id -u)" -gt 0 ]]; then
-        _run unshare -r -m
-    fi
-}
-
-# Mount an existing path
-mount_path() {
-    unshare_mount
-    _run mount --bind "$1" "$2"
-}
+# We can't unshare and then run a command in the subshell, as unshare forks
+# TODO: Figure out how to properly start a subshell and run the mount command in there
+# Until then: Just print it
+#
+#unshare_mount() {
+#    if [[ "$(id -u)" -gt 0 ]]; then
+#        echo "unsharing to be able to mount as user"
+#        _run unshare -r -m
+#    fi
+#}
+#
+## Mount an existing path
+#mount_path() {
+#    unshare_mount
+#    echo "Mounting: $meddle_path -> $nix_path"
+#    # The PATH= is required inside the unshare container.
+#    # See https://github.com/NixOS/nixpkgs/issues/42117
+#    # TODO: Get rid of it somehow :)
+#    _run mount --bind "$1" "$2"
+#}
 
 meddle() {
     # Used for creating a new copy
     DATE=$(_date)
     directory=$(get_all_nix_dirs)
     if [[ -z "$directory" ]]; then
-       _err "no directory chosen. exiting"
-       exit 1
+       _err "no directory chosen."
+       return 1
     fi
     dirs=$(find_meddle_paths "$directory")
     dir_count=$?
@@ -112,11 +132,22 @@ meddle() {
         if ! _ask "Directory doesn't exist yet, create?"; then
             return 1
         fi
-        echo "creating dir!"
         meddle_path="$(get_meddle_path ${directory})"
         nix_path="${NIX_STORE_PATH}/${directory}"
+        echo "creating dir: $meddle_path"
         copy_path "$nix_path" "$meddle_path"
         make_writable "$meddle_path"
     fi
-    mount_path "$meddle_path" "$nix_path"
+    gum format -t template -- "{{ \"\n\nYou can now edit the following path:\" }}{{ Color \"99\" \"$meddle_path\n\n\" }}"
+    gum format -t template -- 'Please run the following commands in your shell to bind-mount the directory {{ Color "69" "one after the other (because unshare starts a subshell):\n\n" }}'
+    echo unshare -r -m
+    echo ''
+    echo "$MOUNT_COMMAND -v --bind \"$nix_path\" \"$meddle_path\""
+    echo ''
+
+    #mount_path "$meddle_path" "$nix_path"
 }
+
+if ! _is_sourced; then
+    meddle
+fi
